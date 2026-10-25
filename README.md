@@ -18,6 +18,21 @@ Each gauge reuses the login of the official command-line tool, read-only:
 
 Usage is polled every 2 minutes from api.anthropic.com and chatgpt.com. These endpoints are undocumented and may change. Not affiliated with Anthropic or OpenAI.
 
+## Install from release
+
+Download the zip from the [latest release](https://github.com/Shreyansh-Kanojiaa/AI-Usagelimit_extension/releases/latest), or:
+
+```sh
+curl -LO https://github.com/Shreyansh-Kanojiaa/AI-Usagelimit_extension/releases/latest/download/ai-usage-limit@shreyansh-kanojiaa.github.io.shell-extension.zip
+gnome-extensions install --force ai-usage-limit@shreyansh-kanojiaa.github.io.shell-extension.zip
+```
+
+Log out and back in, then enable it:
+
+```sh
+gnome-extensions enable ai-usage-limit@shreyansh-kanojiaa.github.io
+```
+
 ## Install from source
 
 ```sh
@@ -25,10 +40,9 @@ git clone https://github.com/Shreyansh-Kanojiaa/AI-Usagelimit_extension.git
 cd AI-Usagelimit_extension
 glib-compile-schemas ai-usage-limit@shreyansh-kanojiaa.github.io/schemas
 cp -r ai-usage-limit@shreyansh-kanojiaa.github.io ~/.local/share/gnome-shell/extensions/
-gnome-extensions enable ai-usage-limit@shreyansh-kanojiaa.github.io
 ```
 
-Then log out and back in.
+Log out and back in, then run the same `gnome-extensions enable` command as above.
 
 ## License
 

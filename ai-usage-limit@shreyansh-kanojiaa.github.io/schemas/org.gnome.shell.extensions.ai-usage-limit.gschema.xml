@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.ai-usage-limit" path="/org/gnome/shell/extensions/ai-usage-limit/">
+    <key name="show-claude" type="b">
+      <default>true</default>
+      <summary>Show the Claude gauge</summary>
+    </key>
+    <key name="show-codex" type="b">
+      <default>false</default>
+      <summary>Show the ChatGPT (Codex) gauge</summary>
+    </key>
+  </schema>
+</schemalist>

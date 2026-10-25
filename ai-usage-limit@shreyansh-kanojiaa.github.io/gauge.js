@@ -2,47 +2,60 @@
 export const SIZE = 28;
 
 const TAU = 2 * Math.PI;
-const BLUE = [0.29, 0.64, 1];
-const ORANGE = [0.8, 0.47, 0.23];
+const GREY = [0.5, 0.5, 0.5];
 
-// session/week: used fraction 0..1, or null when unknown
-export function draw(cr, session, week) {
+// inner/outer: used fraction 0..1, or null when unknown (inner) / absent (outer)
+// palette: {used, base, ring?, outline?}: RGB arrays; ring outlines the pie when it could vanish on a
+// dark bar, outline is the number's shadow opacity
+export function draw(cr, inner, outer, palette) {
     const cx = SIZE / 2, cy = 12, r = 9;
     cr.newPath();
 
-    // outer bottom semicircle (weekly), filled left -> right
-    cr.setLineWidth(3);
-    cr.setSourceRGBA(1, 1, 1, 0.25);
-    cr.arc(cx, cy, 12.5, 0, Math.PI);
-    cr.stroke();
-    if (week) {
-        cr.setSourceRGBA(...BLUE, 1);
-        cr.arcNegative(cx, cy, 12.5, Math.PI, Math.PI - Math.PI * Math.min(week, 1));
+    // outer bottom semicircle, filled left -> right
+    if (outer !== null) {
+        cr.setLineWidth(3);
+        cr.setSourceRGBA(1, 1, 1, 0.25);
+        cr.arc(cx, cy, 12.5, 0, Math.PI);
         cr.stroke();
+        if (outer) {
+            cr.setSourceRGBA(...(palette.ring ?? palette.used), 1);
+            cr.arcNegative(cx, cy, 12.5, Math.PI, Math.PI - Math.PI * Math.min(outer, 1));
+            cr.stroke();
+        }
     }
 
-    // inner pie (session): orange = left, blue slice = used, clockwise from 12 o'clock
-    if (session === null)
-        cr.setSourceRGBA(0.5, 0.5, 0.5, 1);
-    else
-        cr.setSourceRGBA(...ORANGE, 1);
+    // inner pie: base = left, used slice clockwise from 12 o'clock
+    cr.setSourceRGBA(...(inner === null ? GREY : palette.base), 1);
     cr.arc(cx, cy, r, 0, TAU);
     cr.fill();
-    if (session) {
-        cr.setSourceRGBA(...BLUE, 1);
+    if (inner) {
+        cr.setSourceRGBA(...palette.used, 1);
         cr.moveTo(cx, cy);
-        cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(session, 1));
+        cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(inner, 1));
         cr.closePath();
         cr.fill();
     }
+    if (palette.ring && inner !== null) {
+        cr.setLineWidth(1);
+        cr.setSourceRGBA(...palette.ring, 1);
+        cr.arc(cx, cy, r - 0.5, 0, TAU);
+        cr.stroke();
+    }
 
-    // percent in the middle
+    // percent in the middle, outlined so it reads on any fill
     // (no % sign: 3 digits + % don't fit in an 18px circle)
-    const pct = session === null ? '?' : `${Math.round(session * 100)}`;
+    const pct = inner === null ? '?' : `${Math.round(inner * 100)}`;
     cr.selectFontFace('Sans', 0, 1);
     cr.setFontSize(pct.length > 2 ? 8 : pct.length > 1 ? 10.5 : 12);
     const e = cr.textExtents(pct);
+    const x = cx - e.width / 2 - e.xBearing, y = cy - e.height / 2 - e.yBearing;
+    // GJS cairo has no textPath, so fake the outline with offset copies
+    cr.setSourceRGBA(0, 0, 0, palette.outline ?? 0.5);
+    for (const [dx, dy] of [[-0.7, 0], [0.7, 0], [0, -0.7], [0, 0.7]]) {
+        cr.moveTo(x + dx, y + dy);
+        cr.showText(pct);
+    }
     cr.setSourceRGBA(1, 1, 1, 1);
-    cr.moveTo(cx - e.width / 2 - e.xBearing, cy - e.height / 2 - e.yBearing);
+    cr.moveTo(x, y);
     cr.showText(pct);
 }

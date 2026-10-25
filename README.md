@@ -1,22 +1,30 @@
 # AI Usage Limit
 
-GNOME Shell extension (45–50) that shows your Claude usage limits in the top bar:
+GNOME Shell extension (45–50) that shows your AI plan usage limits in the top bar, one gauge per service:
 
-- **Inner circle:** 5-hour session limit, filled blue as you use it, with the % used in the middle
-- **Outer arc:** weekly limit
-- **Click** for exact percentages and reset times
+| Gauge | Inner circle | Outer arc | Colors |
+|---|---|---|---|
+| Claude | 5-hour session | Weekly | orange / blue |
+| ChatGPT (Codex) | Shortest window your plan has (5-hour on Plus/Pro) | Next window (weekly), if any | white / black |
+
+The circle fills with the "used" color as you use the limit, with the % used in the middle. Click a gauge for exact percentages and reset times. Pick which gauges to show in the extension's settings (Extension Manager → AI Usage Limit → ⚙).
 
 ## Requirements
 
-[Claude Code](https://claude.com/claude-code) logged in with a Claude subscription. The extension reads the login from `~/.claude/.credentials.json` (it never writes to it) and polls `api.anthropic.com` every 2 minutes. If the login expires, run `claude` once and Claude Code renews it.
+Each gauge reuses the login of the official command-line tool, read-only:
 
-The usage endpoint is undocumented and may change. Not affiliated with Anthropic.
+- **Claude:** [Claude Code](https://claude.com/claude-code) logged in (`~/.claude/.credentials.json`). If the login expires, run `claude` once.
+- **ChatGPT:** [Codex CLI](https://github.com/openai/codex) signed in with ChatGPT (`~/.codex/auth.json`). If the login expires, run `codex` once.
+
+Usage is polled every 2 minutes from api.anthropic.com and chatgpt.com. These endpoints are undocumented and may change. Not affiliated with Anthropic or OpenAI.
 
 ## Install from source
 
 ```sh
 git clone https://github.com/Shreyansh-Kanojiaa/AI-Usagelimit_extension.git
-cp -r AI-Usagelimit_extension/ai-usage-limit@shreyansh-kanojiaa.github.io ~/.local/share/gnome-shell/extensions/
+cd AI-Usagelimit_extension
+glib-compile-schemas ai-usage-limit@shreyansh-kanojiaa.github.io/schemas
+cp -r ai-usage-limit@shreyansh-kanojiaa.github.io ~/.local/share/gnome-shell/extensions/
 gnome-extensions enable ai-usage-limit@shreyansh-kanojiaa.github.io
 ```
 

@@ -1,7 +1,8 @@
 {
   "uuid": "ai-usage-limit@shreyansh-kanojiaa.github.io",
   "name": "AI Usage Limit",
-  "description": "Shows your Claude 5-hour session and weekly usage limits as a gauge in the top bar. Click it for exact percentages and reset times.\n\nRequires Claude Code to be logged in: it reads the login from ~/.claude/.credentials.json (read-only) and fetches usage from api.anthropic.com every 2 minutes. Not affiliated with Anthropic.",
+  "description": "Shows your Claude and ChatGPT (Codex) usage limits as gauges in the top bar. The inner circle is the short limit, the outer arc the longer one; click for exact percentages and reset times. Choose which gauges to show in the settings.\n\nUses the logins of the official command-line tools on this computer, read-only: Claude Code (~/.claude/.credentials.json) and Codex (~/.codex/auth.json). It fetches usage from api.anthropic.com and chatgpt.com every 2 minutes. Not affiliated with Anthropic or OpenAI.",
   "url": "https://github.com/Shreyansh-Kanojiaa/AI-Usagelimit_extension",
+  "settings-schema": "org.gnome.shell.extensions.ai-usage-limit",
   "shell-version": ["45", "46", "47", "48", "49", "50"]
 }

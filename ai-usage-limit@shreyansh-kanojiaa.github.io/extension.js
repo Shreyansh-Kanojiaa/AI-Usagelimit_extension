@@ -11,19 +11,15 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {draw, SIZE} from './gauge.js';
+import {PROVIDERS} from './providers.js';
 
-Gio._promisify(Soup.Session.prototype, 'send_and_read_async', 'send_and_read_finish');
-
-const CREDS = GLib.build_filenamev([GLib.get_home_dir(), '.claude', '.credentials.json']);
-const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const POLL_SECONDS = 120;
 const RETRY_SECONDS = 30; // after a failure, e.g. network not up yet at login
 
 // "Sun 14:30 (in 3d 4h)", or "no active window" when the limit isn't running
-function resetText(iso) {
-    if (!iso)
+function resetText(d) {
+    if (!d)
         return 'no active window';
-    const d = new Date(iso);
     const opts = {hour: '2-digit', minute: '2-digit'};
     if (d.toDateString() !== new Date().toDateString())
         opts.weekday = 'short';
@@ -33,31 +29,24 @@ function resetText(iso) {
     return `${d.toLocaleString([], opts)} (in ${left})`;
 }
 
-// Claude Code's login; Claude Code itself renews it whenever you use it
-function readToken() {
-    const [, bytes] = Gio.File.new_for_path(CREDS).load_contents(null);
-    const oauth = JSON.parse(new TextDecoder().decode(bytes)).claudeAiOauth;
-    if (!oauth?.accessToken)
-        throw new Error('Not logged in — run `claude` and /login');
-    if (oauth.expiresAt < Date.now())
-        throw new Error('Login expired — run `claude` once to renew it');
-    return oauth.accessToken;
-}
-
-function usageText(u) {
-    const used = u?.utilization ?? 0;
-    return `${used.toFixed(1)}% used · ${(100 - used).toFixed(1)}% left\nResets ${resetText(u?.resets_at)}`;
+function windowText(w) {
+    const lines = [w.title, `${w.used.toFixed(1)}% used · ${(100 - w.used).toFixed(1)}% left`,
+        `Resets ${resetText(w.resetsAt)}`];
+    if (w.note)
+        lines.push(w.note);
+    return lines.join('\n');
 }
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
-    _init() {
-        super._init(0.0, 'AI Usage Limit');
-        this._used = [null, null]; // [session, week] as 0..1
+    _init(provider) {
+        super._init(0.0, `${provider.name} usage`);
+        this._provider = provider;
+        this._used = [null, null]; // [inner, outer] as 0..1
         this._gauge = new St.DrawingArea({width: SIZE, height: SIZE, y_align: Clutter.ActorAlign.CENTER});
         this._gauge.connect('repaint', () => {
             const cr = this._gauge.get_context();
-            draw(cr, ...this._used);
+            draw(cr, ...this._used, provider.palette);
             cr.$dispose();
         });
         this.add_child(this._gauge);
@@ -67,9 +56,12 @@ class Indicator extends PanelMenu.Button {
             this.menu.addMenuItem(i);
             return i;
         };
-        this._session = item();
+        item().label.text = provider.name;
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this._week = item();
+        this._inner = item();
+        this._outerSep = new PopupMenu.PopupSeparatorMenuItem();
+        this.menu.addMenuItem(this._outerSep);
+        this._outer = item();
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._status = item();
         this.menu.addAction('Refresh now', () => this.refresh());
@@ -87,21 +79,15 @@ class Indicator extends PanelMenu.Button {
         this._busy = true;
         let next = POLL_SECONDS;
         try {
-            const msg = Soup.Message.new('GET', USAGE_URL);
-            msg.request_headers.append('Authorization', `Bearer ${readToken()}`);
-            msg.request_headers.append('anthropic-beta', 'oauth-2025-04-20');
-            const body = await this._http.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, this._cancel);
-            if (msg.status_code !== 200)
-                throw new Error(`Usage API: HTTP ${msg.status_code}`);
-            this._show(JSON.parse(new TextDecoder().decode(body.get_data())));
+            this._show(await this._provider.fetch(this._http, this._cancel));
             this._updated = `Updated ${new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
             this._status.label.text = this._updated;
         } catch (e) {
             if (e.matches?.(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
                 return; // destroyed
             // keep the last good reading on screen; only show "?" if there never was one
-            if (!this._session.label.text)
-                this._session.label.text = 'Waiting for data…';
+            if (!this._inner.label.text)
+                this._inner.label.text = 'Waiting for data…';
             this._status.label.text = [this._updated, `⚠ ${e.message}`].filter(Boolean).join('\n');
             next = RETRY_SECONDS;
         }
@@ -115,11 +101,12 @@ class Indicator extends PanelMenu.Button {
         });
     }
 
-    _show({five_hour: s, seven_day: w}) {
-        this._used = [(s?.utilization ?? 0) / 100, (w?.utilization ?? 0) / 100];
+    _show({inner, outer}) {
+        this._used = [inner ? inner.used / 100 : null, outer ? outer.used / 100 : null];
         this._gauge.queue_repaint();
-        this._session.label.text = `Session (5h)\n${usageText(s)}`;
-        this._week.label.text = `Weekly\n${usageText(w)}`;
+        this._inner.label.text = inner ? windowText(inner) : 'No usage limit reported';
+        this._outer.label.text = outer ? windowText(outer) : '';
+        this._outer.visible = this._outerSep.visible = !!outer;
     }
 
     destroy() {
@@ -133,13 +120,29 @@ class Indicator extends PanelMenu.Button {
 
 export default class AIUsageLimit extends Extension {
     enable() {
-        this._indicator = new Indicator();
-        // index 0 of the right box = just left of the network/battery/system menu
-        Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'right');
+        this._settings = this.getSettings();
+        this._indicators = [];
+        this._settingsId = this._settings.connect('changed', () => this._sync());
+        this._sync();
+    }
+
+    // rebuild the gauges for whichever services are switched on
+    _sync() {
+        this._indicators.forEach(i => i.destroy());
+        this._indicators = PROVIDERS
+            .filter(p => this._settings.get_boolean(`show-${p.id}`))
+            .map((p, i) => {
+                const indicator = new Indicator(p);
+                // from index 0 of the right box: side by side, just left of the network/battery/system menu
+                Main.panel.addToStatusArea(`${this.uuid}-${p.id}`, indicator, i, 'right');
+                return indicator;
+            });
     }
 
     disable() {
-        this._indicator?.destroy();
-        this._indicator = null;
+        this._settings.disconnect(this._settingsId);
+        this._indicators.forEach(i => i.destroy());
+        this._indicators = null;
+        this._settings = null;
     }
 }
